@@ -127,10 +127,14 @@ if (process.env.NODE_ENV !== 'production') {
 const chatRoutes = require('./routes/chat');
 const bookingRoutes = require('./routes/booking');
 const servicesRoutes = require('./routes/services');
+const productosRoutes = require('./routes/productos');
+const salesRoutes = require('./routes/sales');
 
 app.use('/api/chat', chatRoutes);
 app.use('/api/booking', bookingRoutes);
 app.use('/api/services', servicesRoutes);
+app.use('/api/productos', productosRoutes);
+app.use('/api/sales', salesRoutes);
 
 // Ruta de salud
 app.get('/api/health', (req, res) => {

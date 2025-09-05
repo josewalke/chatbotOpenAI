@@ -3,7 +3,10 @@ import styled from 'styled-components';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import ChatInterface from './components/ChatInterface';
 import ServicesList from './components/ServicesList';
-import { FiMessageCircle, FiGrid, FiHome, FiInfo } from 'react-icons/fi';
+import BookingsPage from './components/BookingsPage';
+import ProductsPage from './components/ProductsPage';
+import SalesPage from './components/SalesPage';
+import { FiMessageCircle, FiGrid, FiHome, FiInfo, FiCalendar, FiPackage, FiTrendingUp } from 'react-icons/fi';
 
 const AppContainer = styled.div`
   min-height: 100vh;
@@ -252,6 +255,30 @@ const App = () => {
                 <FiMessageCircle />
                 Asistente Virtual
               </NavLink>
+              <NavLink 
+                to="/bookings" 
+                className={currentPage === 'bookings' ? 'active' : ''}
+                onClick={() => setCurrentPage('bookings')}
+              >
+                <FiCalendar />
+                Citas
+              </NavLink>
+              <NavLink 
+                to="/products" 
+                className={currentPage === 'products' ? 'active' : ''}
+                onClick={() => setCurrentPage('products')}
+              >
+                <FiPackage />
+                Productos
+              </NavLink>
+              <NavLink 
+                to="/sales" 
+                className={currentPage === 'sales' ? 'active' : ''}
+                onClick={() => setCurrentPage('sales')}
+              >
+                <FiTrendingUp />
+                Ventas
+              </NavLink>
             </NavLinks>
           </Nav>
         </Header>
@@ -261,6 +288,9 @@ const App = () => {
             <Route path="/" element={<HomePage />} />
             <Route path="/services" element={<ServicesList />} />
             <Route path="/chat" element={<ChatInterface />} />
+            <Route path="/bookings" element={<BookingsPage />} />
+            <Route path="/products" element={<ProductsPage />} />
+            <Route path="/sales" element={<SalesPage />} />
           </Routes>
         </MainContent>
       </AppContainer>
