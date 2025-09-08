@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import axios from 'axios';
+import api from '../services/api';
 import { 
   FiTrendingUp, FiPlus, FiEdit, FiTrash2, FiSearch, FiFilter, 
   FiRefreshCw, FiEye, FiEyeOff, FiSave, FiX, FiCheck,
@@ -169,7 +169,7 @@ const SaleCard = styled.div`
   padding: 24px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   border-left: 4px solid ${props => {
-    switch(props.paymentStatus) {
+    switch(props.$paymentStatus) {
       case 'paid': return '#28a745';
       case 'pending': return '#ffc107';
       case 'cancelled': return '#dc3545';
@@ -282,7 +282,7 @@ const Modal = styled.div`
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
-  display: ${props => props.show ? 'flex' : 'none'};
+  display: ${props => props.$show ? 'flex' : 'none'};
   align-items: center;
   justify-content: center;
   z-index: 1000;
@@ -431,13 +431,13 @@ const SalesPage = () => {
       setLoading(true);
       setError(null);
       const [salesRes, statsRes, productsRes] = await Promise.all([
-        axios.get('/api/sales'),
-        axios.get('/api/sales/stats'),
-        axios.get('/api/productos')
+        api.get('/sales'),
+        api.get('/sales/stats'),
+        api.get('/productos')
       ]);
-      setSales(salesRes.data.data);
-      setStats(statsRes.data.data);
-      setProducts(productsRes.data.data);
+      setSales(salesRes.data.data || []);
+      setStats(statsRes.data.data || {});
+      setProducts(productsRes.data.data || []);
     } catch (err) {
       setError('Error al cargar los datos de ventas');
       console.error('Error fetching sales data:', err);
@@ -491,7 +491,7 @@ const SalesPage = () => {
   const handleDeleteSale = async (id) => {
     if (window.confirm('¿Estás seguro de que quieres eliminar esta venta?')) {
       try {
-        await axios.delete(`/api/sales/${id}`);
+        await api.delete(`/sales/${id}`);
         fetchData();
       } catch (err) {
         setError('Error al eliminar la venta');
@@ -533,9 +533,11 @@ const SalesPage = () => {
     }
   };
 
-  const filteredSales = sales.filter(sale => {
-    const matchesSearch = sale.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         sale.customerInfo.name.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredSales = (sales || []).filter(sale => {
+    const productName = sale.productName || sale.producto_nombre || '';
+    const customerName = sale.customerInfo?.name || sale.cliente_nombre || '';
+    const matchesSearch = productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         customerName.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = !filterStatus || sale.paymentStatus === filterStatus;
     return matchesSearch && matchesStatus;
   });
@@ -647,7 +649,7 @@ const SalesPage = () => {
       ) : (
         <SalesGrid>
           {filteredSales.map((sale) => (
-            <SaleCard key={sale.id} paymentStatus={sale.paymentStatus}>
+            <SaleCard key={sale.id} $paymentStatus={sale.paymentStatus}>
               <SaleHeader>
                 <SaleTitle>{sale.productName}</SaleTitle>
                 <SaleId>#{sale.id.slice(0, 8)}</SaleId>
@@ -701,7 +703,7 @@ const SalesPage = () => {
         </SalesGrid>
       )}
 
-      <Modal show={showModal}>
+      <Modal $show={showModal}>
         <ModalContent>
           <ModalHeader>
             <ModalTitle>

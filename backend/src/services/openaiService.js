@@ -3,8 +3,36 @@ const dotenv = require('dotenv');
 const winston = require('winston');
 const productosService = require('./productosService');
 const bookingService = require('./bookingService');
+const calendarService = require('./calendarService');
+const slotManager = require('./slotManager');
+const googleCalendarService = require('./googleCalendarService');
 
 dotenv.config({ path: 'config.env' });
+
+// Logger específico para OpenAI
+const openaiLogger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp({
+      format: 'YYYY-MM-DD HH:mm:ss'
+    }),
+    winston.format.json()
+  ),
+  defaultMeta: { service: 'openai-service' },
+  transports: [
+    new winston.transports.File({ filename: 'logs/openai.log' })
+  ]
+});
+
+if (process.env.NODE_ENV !== 'production') {
+  openaiLogger.add(new winston.transports.Console({
+    format: winston.format.combine(
+      winston.format.colorize(),
+      winston.format.simple()
+    )
+  }));
+}
+
 class OpenAIService {
   constructor() {
     this.openai = new OpenAI({
@@ -23,19 +51,24 @@ REGLAS IMPORTANTES:
 - Nunca des consejo médico; redirige a un profesional para evaluaciones clínicas
 - Usa un tono cercano, profesional y breve
 - Distingue entre TRATAMIENTOS (requieren cita) y PRODUCTOS PARA CASA (compra directa)
-- Para tratamientos: confirma servicio, fecha, hora, nombre y teléfono antes de agendar
+- Para tratamientos: usa el NUEVO FLUJO DE CALENDARIO (search_available_slots → reserve_temporary_slot → confirm_booking)
 - Para productos para casa: confirma producto, cantidad, nombre, teléfono y dirección de envío
 - Valida identidad antes de modificar citas o pedidos
 - Resume siempre la confirmación con todos los detalles relevantes
 - Si detectas insatisfacción, NO pidas reseña; crea ticket para seguimiento humano
-- Para TRATAMIENTOS: usa create_booking solo cuando tengas: servicio + fecha + hora + nombre + teléfono
+- Para TRATAMIENTOS: usa search_available_slots cuando tengas servicio + preferencias de fecha/hora
 - Para PRODUCTOS PARA CASA: usa create_sale solo cuando tengas: producto + cantidad + nombre + teléfono + email + dirección
 - NO ejecutes funciones si faltan campos requeridos
 - NO preguntes por confirmación adicional si ya tienes todos los datos necesarios
 
+FLUJO DE AGENDAMIENTO (NUEVO):
+1. Cliente solicita tratamiento → search_available_slots (con servicio + ventana de tiempo)
+2. Mostrar opciones disponibles → Cliente elige → reserve_temporary_slot
+3. Cliente confirma → confirm_booking (con todos los datos del cliente)
+
 CAPACIDADES:
 - Información sobre tratamientos y productos para casa
-- Agendar citas para tratamientos (usando create_booking)
+- Agendar citas para tratamientos (usando NUEVO FLUJO DE CALENDARIO)
 - Procesar compras de productos para casa (usando create_sale)
 - Responder preguntas sobre ubicación y horarios
 - Proporcionar cuidados e instrucciones de uso
@@ -185,6 +218,106 @@ EMAIL: ${process.env.CLINIC_EMAIL}`;
           },
           required: ["productName", "customerName", "customerPhone", "customerEmail", "shippingAddress"]
         }
+      },
+      {
+        name: "search_available_slots",
+        description: "Buscar horarios disponibles para un servicio específico en una ventana de tiempo",
+        parameters: {
+          type: "object",
+          properties: {
+            serviceName: {
+              type: "string",
+              description: "Nombre del servicio (ej: 'hidratación facial profunda', 'peeling químico')"
+            },
+            startDate: {
+              type: "string",
+              description: "Fecha de inicio de búsqueda (ej: '2025-09-08', 'mañana')"
+            },
+            endDate: {
+              type: "string",
+              description: "Fecha de fin de búsqueda (ej: '2025-09-15', 'próxima semana')"
+            },
+            preferredProfessional: {
+              type: "string",
+              description: "Profesional preferido (opcional, ej: 'Ana García', 'Laura Martínez')"
+            },
+            timePreferences: {
+              type: "array",
+              items: { type: "string" },
+              description: "Preferencias de horario (ej: ['mañana', 'tarde'], ['fin de semana'])"
+            }
+          },
+          required: ["serviceName", "startDate", "endDate"]
+        }
+      },
+      {
+        name: "reserve_temporary_slot",
+        description: "Reservar temporalmente un slot específico mientras el cliente decide",
+        parameters: {
+          type: "object",
+          properties: {
+            slotId: {
+              type: "string",
+              description: "ID del slot a reservar temporalmente"
+            },
+            customerId: {
+              type: "string",
+              description: "ID único del cliente"
+            },
+            ttl: {
+              type: "number",
+              description: "Tiempo de vida de la reserva en segundos (por defecto 300 = 5 minutos)"
+            }
+          },
+          required: ["slotId", "customerId"]
+        }
+      },
+      {
+        name: "confirm_booking",
+        description: "Confirmar una cita después de reservar temporalmente un slot",
+        parameters: {
+          type: "object",
+          properties: {
+            slotId: {
+              type: "string",
+              description: "ID del slot reservado temporalmente"
+            },
+            customerId: {
+              type: "string",
+              description: "ID del cliente"
+            },
+            serviceName: {
+              type: "string",
+              description: "Nombre del servicio"
+            },
+            customerName: {
+              type: "string",
+              description: "Nombre completo del cliente"
+            },
+            customerPhone: {
+              type: "string",
+              description: "Teléfono del cliente"
+            },
+            customerEmail: {
+              type: "string",
+              description: "Email del cliente"
+            },
+            notes: {
+              type: "string",
+              description: "Notas adicionales sobre la cita"
+            }
+          },
+          required: ["slotId", "customerId", "serviceName", "customerName", "customerPhone"]
+        }
+      },
+      {
+        name: "get_calendar_stats",
+        description: "Obtener estadísticas del calendario y disponibilidad",
+        parameters: {
+          type: "object",
+          properties: {},
+          required: []
+        }
       }
     ];
   }
@@ -333,6 +466,14 @@ EMAIL: ${process.env.CLINIC_EMAIL}`;
           return await this.executeSearchBookings(args);
         case 'create_sale':
           return await this.executeCreateSale(args);
+        case 'search_available_slots':
+          return await this.executeSearchAvailableSlots(args);
+        case 'reserve_temporary_slot':
+          return await this.executeReserveTemporarySlot(args);
+        case 'confirm_booking':
+          return await this.executeConfirmBooking(args);
+        case 'get_calendar_stats':
+          return await this.executeGetCalendarStats();
         default:
           return {
             success: false,
@@ -697,6 +838,305 @@ Responde ÚNICAMENTE en formato JSON válido, sin markdown ni código:
         message: `Error procesando la compra: ${error.message}`
       };
     }
+  }
+
+  // Ejecutar búsqueda de slots disponibles
+  async executeSearchAvailableSlots(args) {
+    try {
+      const ventanaCliente = {
+        desde: this.parseDate(args.startDate),
+        hasta: this.parseDate(args.endDate),
+        franjas: args.timePreferences || ['mañana', 'tarde']
+      };
+
+      const profesionalPreferido = args.preferredProfessional ? 
+        this.getProfessionalIdByName(args.preferredProfessional) : null;
+
+      const resultado = await calendarService.buscarHuecos(
+        args.serviceName,
+        ventanaCliente,
+        profesionalPreferido
+      );
+
+      if (!resultado.success) {
+        return {
+          success: false,
+          message: resultado.message
+        };
+      }
+
+      const opcionesFormateadas = resultado.opciones.map(opcion => {
+        const inicio = new Date(opcion.slot.inicio);
+        const fin = new Date(opcion.slot.fin);
+        
+        return {
+          slotId: opcion.slot.id,
+          fecha: inicio.toLocaleDateString('es-ES'),
+          hora: inicio.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+          profesional: opcion.profesional.name,
+          duracion: opcion.duracion,
+          sala: opcion.slot.sala,
+          score: Math.round(opcion.score)
+        };
+      });
+
+      openaiLogger.info('Available Slots Found', {
+        serviceName: args.serviceName,
+        slotsFound: opcionesFormateadas.length,
+        timestamp: new Date().toISOString()
+      });
+
+      let mensaje = `📅 **Horarios disponibles para ${args.serviceName}:**\n\n`;
+      
+      if (opcionesFormateadas.length === 0) {
+        mensaje += `❌ No hay horarios disponibles en la fecha solicitada.\n\n`;
+        mensaje += `💡 Te sugiero probar con otras fechas o contactar directamente al ${process.env.CLINIC_PHONE}`;
+      } else {
+        opcionesFormateadas.forEach((opcion, index) => {
+          mensaje += `**${index + 1}.** ${opcion.fecha} a las ${opcion.hora}\n`;
+          mensaje += `   👩‍⚕️ ${opcion.profesional} | 🏠 ${opcion.sala} | ⏱️ ${opcion.duracion} min\n\n`;
+        });
+        
+        mensaje += `💡 **¿Te interesa alguno?** Solo dime el número y procederé a reservarlo temporalmente.`;
+      }
+
+      return {
+        success: true,
+        message: mensaje,
+        slots: opcionesFormateadas
+      };
+
+    } catch (error) {
+      openaiLogger.error('Search Available Slots Error', {
+        error: error.message,
+        args: args,
+        timestamp: new Date().toISOString()
+      });
+      
+      return {
+        success: false,
+        message: `Error buscando horarios disponibles: ${error.message}`
+      };
+    }
+  }
+
+  // Ejecutar reserva temporal de slot
+  async executeReserveTemporarySlot(args) {
+    try {
+      const resultado = await slotManager.reservarTemporal(
+        args.slotId,
+        args.customerId,
+        args.ttl || 300
+      );
+
+      if (!resultado.success) {
+        return {
+          success: false,
+          message: resultado.message
+        };
+      }
+
+      openaiLogger.info('Temporary Slot Reserved', {
+        slotId: args.slotId,
+        customerId: args.customerId,
+        expiresIn: resultado.expiresIn,
+        timestamp: new Date().toISOString()
+      });
+
+      return {
+        success: true,
+        message: `✅ **Slot reservado temporalmente**\n\n` +
+                 `⏰ Tienes ${Math.floor(resultado.expiresIn / 60)} minutos para confirmar.\n` +
+                 `📅 Expira: ${resultado.expiresAt}\n\n` +
+                 `💡 **¿Confirmas esta cita?** Responde "sí" para proceder con la confirmación.`,
+        expiresIn: resultado.expiresIn,
+        expiresAt: resultado.expiresAt
+      };
+
+    } catch (error) {
+      openaiLogger.error('Reserve Temporary Slot Error', {
+        error: error.message,
+        args: args,
+        timestamp: new Date().toISOString()
+      });
+      
+      return {
+        success: false,
+        message: `Error reservando slot temporal: ${error.message}`
+      };
+    }
+  }
+
+  // Ejecutar confirmación de cita
+  async executeConfirmBooking(args) {
+    try {
+      // Primero confirmar la reserva temporal
+      const confirmacionReserva = await slotManager.confirmarReserva(args.slotId, args.customerId);
+      
+      if (!confirmacionReserva.success) {
+        return {
+          success: false,
+          message: confirmacionReserva.message
+        };
+      }
+
+      // Obtener datos del slot
+      const slotData = await this.getSlotData(args.slotId);
+      if (!slotData) {
+        return {
+          success: false,
+          message: 'No se encontraron datos del slot'
+        };
+      }
+
+      // Crear la cita en el sistema
+      const datosCita = {
+        servicio: args.serviceName,
+        cliente: {
+          nombre: args.customerName,
+          telefono: args.customerPhone,
+          email: args.customerEmail || `${args.customerName.toLowerCase().replace(/\s+/g, '.')}@clinica.com`
+        },
+        fecha: slotData.inicio,
+        hora: slotData.inicio,
+        profesional: slotData.profesional,
+        sala: slotData.sala,
+        notas: args.notes || ''
+      };
+
+      const resultadoCita = await calendarService.confirmarCita(args.slotId, args.customerId, datosCita);
+      
+      if (!resultadoCita.success) {
+        return {
+          success: false,
+          message: resultadoCita.message
+        };
+      }
+
+      // Crear evento en Google Calendar si está configurado
+      if (googleCalendarService.isGoogleCalendarConfigured()) {
+        const eventoData = {
+          summary: `${args.serviceName} - ${args.customerName}`,
+          description: `Cita confirmada para ${args.serviceName}\nCliente: ${args.customerName}\nTeléfono: ${args.customerPhone}`,
+          startTime: slotData.inicio,
+          endTime: slotData.fin,
+          location: process.env.CLINIC_ADDRESS,
+          attendees: [{ email: datosCita.cliente.email }]
+        };
+
+        const eventoResultado = await googleCalendarService.createEvent(eventoData);
+        if (eventoResultado.success) {
+          openaiLogger.info('Google Calendar Event Created', {
+            eventId: eventoResultado.eventId,
+            slotId: args.slotId
+          });
+        }
+      }
+
+      openaiLogger.info('Booking Confirmed', {
+        slotId: args.slotId,
+        customerId: args.customerId,
+        serviceName: args.serviceName,
+        timestamp: new Date().toISOString()
+      });
+
+      const fechaFormateada = new Date(slotData.inicio).toLocaleDateString('es-ES');
+      const horaFormateada = new Date(slotData.inicio).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+      return {
+        success: true,
+        message: `🎉 **¡Cita confirmada exitosamente!**\n\n` +
+                 `📋 **Detalles de tu cita:**\n` +
+                 `• Servicio: ${args.serviceName}\n` +
+                 `• Fecha: ${fechaFormateada}\n` +
+                 `• Hora: ${horaFormateada}\n` +
+                 `• Profesional: ${slotData.profesional}\n` +
+                 `• Sala: ${slotData.sala}\n` +
+                 `• Cliente: ${args.customerName}\n` +
+                 `• Teléfono: ${args.customerPhone}\n\n` +
+                 `📍 **Ubicación:** ${process.env.CLINIC_ADDRESS}\n` +
+                 `📞 **Teléfono:** ${process.env.CLINIC_PHONE}\n\n` +
+                 `✅ Recibirás un email de confirmación con todos los detalles.`,
+        bookingId: resultadoCita.cita.id
+      };
+
+    } catch (error) {
+      openaiLogger.error('Confirm Booking Error', {
+        error: error.message,
+        args: args,
+        timestamp: new Date().toISOString()
+      });
+      
+      return {
+        success: false,
+        message: `Error confirmando cita: ${error.message}`
+      };
+    }
+  }
+
+  // Ejecutar obtención de estadísticas del calendario
+  async executeGetCalendarStats() {
+    try {
+      const estadisticasCalendario = calendarService.getEstadisticas();
+      const estadisticasSlots = slotManager.getEstadisticas();
+      const configuracionGoogle = googleCalendarService.getConfiguration();
+
+      const estadisticas = {
+        calendario: estadisticasCalendario,
+        slots: estadisticasSlots,
+        googleCalendar: configuracionGoogle
+      };
+
+      openaiLogger.info('Calendar Stats Retrieved', {
+        timestamp: new Date().toISOString()
+      });
+
+      return {
+        success: true,
+        message: `📊 **Estadísticas del Sistema de Calendario:**\n\n` +
+                 `👩‍⚕️ **Profesionales:** ${estadisticasCalendario.profesionales}\n` +
+                 `🏠 **Recursos:** ${estadisticasCalendario.recursos}\n` +
+                 `⏰ **Reservas temporales:** ${estadisticasSlots.reservasActivas}\n` +
+                 `✅ **Reservas confirmadas:** ${estadisticasSlots.reservasConfirmadas}\n` +
+                 `📅 **Google Calendar:** ${configuracionGoogle.isConfigured ? 'Conectado' : 'No configurado'}`,
+        stats: estadisticas
+      };
+
+    } catch (error) {
+      openaiLogger.error('Get Calendar Stats Error', {
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+      
+      return {
+        success: false,
+        message: `Error obteniendo estadísticas: ${error.message}`
+      };
+    }
+  }
+
+  // Obtener datos de un slot específico
+  async getSlotData(slotId) {
+    // Esta función debería obtener los datos del slot desde el calendario
+    // Por ahora simulamos con datos básicos
+    return {
+      id: slotId,
+      inicio: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Mañana
+      fin: new Date(Date.now() + 24 * 60 * 60 * 1000 + 60 * 60 * 1000).toISOString(), // Mañana + 1 hora
+      profesional: 'Ana García',
+      sala: 'sala_1'
+    };
+  }
+
+  // Obtener ID de profesional por nombre
+  getProfessionalIdByName(nombre) {
+    const profesionales = {
+      'Ana García': 'prof_ana',
+      'Laura Martínez': 'prof_laura',
+      'Carmen López': 'prof_carmen'
+    };
+    
+    return profesionales[nombre] || null;
   }
 }
 

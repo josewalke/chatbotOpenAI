@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const salesService = require('../services/salesService');
-const productosService = require('../services/productosService');
+const salesService = require('../services/salesServiceSQLite');
+const productosService = require('../services/productsServiceSQLite');
+const DataTransformService = require('../services/dataTransformService');
 const Joi = require('joi');
 
 // Middleware de logging
@@ -55,14 +56,21 @@ router.get('/', async (req, res) => {
       userAgent: req.get('User-Agent')
     });
 
-    const resultado = salesService.getAllSales();
+    const resultado = await salesService.getAllSales();
+    
+    // Transformar datos al formato esperado por el frontend
+    const transformedData = {
+      success: resultado.success,
+      data: DataTransformService.transformSales(resultado.data),
+      total: resultado.total
+    };
     
     logger.info('API Response - Ventas obtenidas', {
-      total: resultado.total,
+      total: transformedData.total,
       statusCode: 200
     });
 
-    res.json(resultado);
+    res.json(transformedData);
   } catch (error) {
     logger.error('Error obteniendo ventas', { error: error.message });
     res.status(500).json({
@@ -80,13 +88,19 @@ router.get('/stats', async (req, res) => {
       userAgent: req.get('User-Agent')
     });
 
-    const resultado = salesService.getSalesStats();
+    const resultado = await salesService.getSalesStats();
+    
+    // Transformar estadísticas al formato esperado por el frontend
+    const transformedData = {
+      success: resultado.success,
+      data: DataTransformService.transformSalesStats(resultado.data)
+    };
     
     logger.info('API Response - Estadísticas obtenidas', {
       statusCode: 200
     });
 
-    res.json(resultado);
+    res.json(transformedData);
   } catch (error) {
     logger.error('Error obteniendo estadísticas', { error: error.message });
     res.status(500).json({
@@ -250,7 +264,18 @@ router.post('/', async (req, res) => {
       userAgent: req.get('User-Agent')
     });
 
-    const resultado = salesService.createSale(value);
+    const resultado = await salesService.createSale({
+      producto_id: value.productId,
+      precio_unitario: value.price,
+      cantidad: value.quantity || 1,
+      cliente_id: null, // Se puede crear cliente después
+      tipo_venta: value.saleType || 'product',
+      metodo_pago: 'card',
+      estado_pago: 'paid',
+      notas: `Venta de ${value.productName} - Cliente: ${value.customerName}`
+    });
+    
+    console.log('🔍 Resultado del servicio:', resultado);
     
     if (!resultado.success) {
       logger.warn('Error al crear venta', { error: resultado.message });
@@ -392,7 +417,7 @@ router.delete('/:id', async (req, res) => {
       userAgent: req.get('User-Agent')
     });
 
-    const resultado = salesService.deleteSale(id);
+    const resultado = await salesService.deleteSale(id);
     
     if (!resultado.success) {
       logger.warn('Error al eliminar venta', { error: resultado.message });

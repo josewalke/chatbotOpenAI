@@ -132,6 +132,8 @@ out/
 *.db
 *.sqlite
 *.sqlite3
+*.db-shm
+*.db-wal
 
 # Backup files
 *.bak
@@ -146,3 +148,22 @@ docs/build/
 
 # Local development
 .local/
+
+# Test files and scripts
+test-*.js
+crear-ventas-prueba.js
+migrate-to-sqlite.js
+
+# Batch files for Windows
+*.bat
+*.ps1
+
+# System startup scripts
+start-*.js
+start-*.bat
+cleanup.bat
+limpiar-sistema.*
+
+# Documentation files (keep main ones)
+SOLUCION-CONFLICTOS.md
+INICIO-INTELIGENTE.md

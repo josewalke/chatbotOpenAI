@@ -35,7 +35,7 @@ const MessageBubble = styled.div`
   display: flex;
   margin-bottom: 16px;
   align-items: flex-start;
-  ${props => props.isUser ? 'justify-content: flex-end;' : 'justify-content: flex-start;'}
+  ${props => props.$isUser ? 'justify-content: flex-end;' : 'justify-content: flex-start;'}
 `;
 
 const MessageContent = styled.div`
@@ -44,7 +44,7 @@ const MessageContent = styled.div`
   border-radius: 18px;
   font-size: 14px;
   line-height: 1.4;
-  ${props => props.isUser ? `
+  ${props => props.$isUser ? `
     background: #667eea;
     color: white;
     border-bottom-right-radius: 4px;
@@ -60,7 +60,7 @@ const MessageTime = styled.div`
   font-size: 11px;
   color: #999;
   margin-top: 4px;
-  text-align: ${props => props.isUser ? 'right' : 'left'};
+  text-align: ${props => props.$isUser ? 'right' : 'left'};
 `;
 
 const InputContainer = styled.div`
@@ -292,10 +292,10 @@ const ChatInterface = () => {
       
       <MessagesContainer>
         {messages.map((message) => (
-          <MessageBubble key={message.id} isUser={message.sender === 'user'}>
-            <MessageContent isUser={message.sender === 'user'}>
+          <MessageBubble key={message.id} $isUser={message.sender === 'user'}>
+            <MessageContent $isUser={message.sender === 'user'}>
               {message.content}
-              <MessageTime isUser={message.sender === 'user'}>
+              <MessageTime $isUser={message.sender === 'user'}>
                 {formatTime(message.timestamp)}
               </MessageTime>
             </MessageContent>
@@ -303,7 +303,7 @@ const ChatInterface = () => {
         ))}
         
         {isLoading && (
-          <MessageBubble isUser={false}>
+          <MessageBubble $isUser={false}>
             <TypingIndicator>
               <Dot />
               <Dot />

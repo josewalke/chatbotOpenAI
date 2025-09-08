@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const productosService = require('../services/productosService');
+const productosService = require('../services/productsServiceSQLite');
+const DataTransformService = require('../services/dataTransformService');
 const Joi = require('joi');
 
 // Middleware de logging
@@ -40,14 +41,21 @@ router.get('/', async (req, res) => {
       userAgent: req.get('User-Agent')
     });
 
-    const resultado = productosService.getAllProductos();
+    const resultado = await productosService.getAllProducts();
+    
+    // Transformar datos al formato esperado por el frontend
+    const transformedData = {
+      success: resultado.success,
+      data: DataTransformService.transformProducts(resultado.data),
+      total: resultado.total
+    };
     
     logger.info('API Response - Productos obtenidos', {
-      total: resultado.total,
+      total: transformedData.total,
       statusCode: 200
     });
 
-    res.json(resultado);
+    res.json(transformedData);
   } catch (error) {
     logger.error('Error obteniendo productos', { error: error.message });
     res.status(500).json({
@@ -115,13 +123,19 @@ router.get('/estadisticas', async (req, res) => {
       userAgent: req.get('User-Agent')
     });
 
-    const resultado = productosService.getEstadisticas();
+    const resultado = await productosService.getProductStats();
+    
+    // Transformar estadísticas al formato esperado por el frontend
+    const transformedData = {
+      success: resultado.success,
+      data: DataTransformService.transformProductStats(resultado.data)
+    };
     
     logger.info('API Response - Estadísticas obtenidas', {
       statusCode: 200
     });
 
-    res.json(resultado);
+    res.json(transformedData);
   } catch (error) {
     logger.error('Error obteniendo estadísticas', { error: error.message });
     res.status(500).json({
@@ -399,7 +413,7 @@ router.post('/buscar', async (req, res) => {
     });
 
     // Implementar búsqueda avanzada basada en criterios
-    let productos = productosService.getAllProductos().data;
+    let productos = productosService.getAllProducts().data;
     
     if (value.categoria) {
       productos = productos.filter(p => 
@@ -474,7 +488,7 @@ router.post('/recomendaciones', async (req, res) => {
     });
 
     // Implementar lógica de recomendaciones basada en necesidades
-    const productos = productosService.getAllProductos().data;
+    const productos = productosService.getAllProducts().data;
     const recomendaciones = productos.filter(producto => {
       const beneficios = producto.beneficios.join(' ').toLowerCase();
       return value.necesidades.some(necesidad => 

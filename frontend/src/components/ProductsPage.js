@@ -161,7 +161,7 @@ const ProductCard = styled.div`
   border-radius: 12px;
   padding: 24px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-  border-left: 4px solid ${props => props.activo ? '#28a745' : '#dc3545'};
+  border-left: 4px solid ${props => props.$activo ? '#28a745' : '#dc3545'};
   transition: transform 0.3s ease;
 
   &:hover {
@@ -244,8 +244,8 @@ const ProductActions = styled.div`
 `;
 
 const StatusBadge = styled.span`
-  background: ${props => props.activo ? '#d4edda' : '#f8d7da'};
-  color: ${props => props.activo ? '#155724' : '#721c24'};
+  background: ${props => props.$activo ? '#d4edda' : '#f8d7da'};
+  color: ${props => props.$activo ? '#155724' : '#721c24'};
   padding: 4px 12px;
   border-radius: 20px;
   font-size: 0.8rem;
@@ -260,7 +260,7 @@ const Modal = styled.div`
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
-  display: ${props => props.show ? 'flex' : 'none'};
+  display: ${props => props.$show ? 'flex' : 'none'};
   align-items: center;
   justify-content: center;
   z-index: 1000;
@@ -620,7 +620,7 @@ const ProductsPage = () => {
       ) : (
         <ProductsGrid>
           {filteredProductos.map((producto) => (
-            <ProductCard key={producto.id} activo={producto.activo !== false}>
+            <ProductCard key={producto.id} $activo={producto.activo !== false}>
               <ProductHeader>
                 <ProductTitle>{producto.nombre}</ProductTitle>
                 <ProductId>#{producto.id}</ProductId>
@@ -645,7 +645,7 @@ const ProductsPage = () => {
               <ProductPrice>€{producto.precio}</ProductPrice>
 
               <div style={{ marginBottom: '16px', textAlign: 'center' }}>
-                <StatusBadge activo={producto.activo !== false}>
+                <StatusBadge $activo={producto.activo !== false}>
                   {producto.activo !== false ? 'Activo' : 'Inactivo'}
                 </StatusBadge>
               </div>
@@ -665,7 +665,7 @@ const ProductsPage = () => {
         </ProductsGrid>
       )}
 
-      <Modal show={showModal}>
+      <Modal $show={showModal}>
         <ModalContent>
           <ModalHeader>
             <ModalTitle>
