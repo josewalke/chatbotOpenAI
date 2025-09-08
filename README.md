@@ -1,252 +1,256 @@
-# 🤖 Chatbot OpenAI para Clínica Estética
+# 🤖 Chatbot Inteligente para Clínica Estética
 
-Sistema de automatización + IA omnichannel para clínica estética que atiende por Instagram, Facebook, WhatsApp y llamadas telefónicas.
+Sistema completo de automatización + IA que atiende por múltiples canales, responde dudas y agenda citas con disponibilidad inteligente.
 
-## 🚀 Características
+## 🎯 Características Principales
 
-- **IA Conversacional**: Integración con OpenAI GPT-4.1-mini y GPT-4.1 (fallback)
-- **Omnichannel**: Soporte para múltiples canales de comunicación
-- **Agendamiento Inteligente**: Sistema de citas con disponibilidad en tiempo real
-- **Logging Completo**: Sistema de logs detallado para monitoreo y debugging
-- **Arquitectura Modular**: Backend Node.js + Frontend React separados
+### **🧠 Inteligencia Artificial**
+- **OpenAI GPT-4** para procesamiento de lenguaje natural
+- **Análisis de intents** y extracción de entidades
+- **Tool-calling** para acciones específicas (agendar, buscar, reservar)
+- **Fallback automático** a GPT-4o en caso de problemas
 
-## 📋 Funcionalidades
+### **📅 Sistema de Calendario Inteligente**
+- **Búsqueda inteligente** de horarios disponibles
+- **Reservas temporales** con TTL automático
+- **Integración Google Calendar** (modo simulación)
+- **Gestión de profesionales** y recursos
+- **Sistema de scoring** para optimización de citas
 
-### 🤖 Chatbot IA
-- Análisis de intents y entidades
-- Respuestas contextuales
-- Fallback automático a modelo de mayor calidad
-- Gestión de conversaciones
+### **💾 Persistencia de Datos**
+- **SQLite** para almacenamiento robusto
+- **Migración automática** desde JSON
+- **Transformación de datos** para compatibilidad frontend/backend
+- **Backup automático** y recuperación
 
-### 📅 Sistema de Citas
-- Agendamiento automático
-- Verificación de disponibilidad
-- Confirmación de citas
-- Reagendamiento y cancelación
+### **🌐 APIs RESTful**
+- **Endpoints de calendario**: `/api/calendar/slots/search`, `/api/calendar/slots/reserve`
+- **Endpoints de ventas**: `/api/sales` (CRUD completo)
+- **Endpoints de productos**: `/api/productos` (CRUD completo)
+- **Endpoints de chat**: `/api/chat/message`
+- **Endpoints de reservas**: `/api/booking`
 
-### 📊 Logging y Monitoreo
-- Logs de API detallados
-- Logs de OpenAI con métricas
-- Monitoreo en tiempo real
-- Estadísticas de uso
+### **🎨 Frontend React**
+- **Interfaz moderna** con Styled Components
+- **Manejo de errores** robusto
+- **APIs centralizadas** con Axios
+- **Componentes reutilizables**
 
-## 🛠️ Tecnologías
+## 🚀 Instalación y Configuración
 
-### Backend
-- **Node.js** + Express
-- **OpenAI API** (GPT-4.1-mini / GPT-4.1)
-- **Winston** para logging
-- **Joi** para validación
-- **Helmet** para seguridad
-
-### Frontend
-- **React 18**
-- **Styled Components**
-- **Axios** para API calls
-- **React Router**
-
-## 📁 Estructura del Proyecto
-
-```
-pruebachatbot/
-├── backend/                 # Servidor Node.js
-│   ├── src/
-│   │   ├── routes/         # Rutas de la API
-│   │   ├── services/       # Servicios (OpenAI, etc.)
-│   │   └── server.js       # Servidor principal
-│   ├── logs/               # Archivos de logs
-│   ├── .env               # Variables de entorno
-│   └── package.json
-├── frontend/               # Aplicación React
-│   ├── src/
-│   │   ├── components/     # Componentes React
-│   │   └── App.js
-│   └── package.json
-├── .gitignore
-└── README.md
-```
-
-## 🚀 Instalación
-
-### Prerrequisitos
+### **Prerrequisitos**
 - Node.js 18+
 - npm o yarn
-- Clave de API de OpenAI
+- OpenAI API Key
 
-### 1. Clonar el repositorio
+### **Instalación**
 ```bash
+# Clonar el repositorio
 git clone https://github.com/josewalke/chatbotOpenAI.git
 cd chatbotOpenAI
-```
 
-### 2. Configurar Backend
-```bash
+# Instalar dependencias del backend
 cd backend
 npm install
-cp .env.example .env
-# Editar .env con tu clave de OpenAI
-npm run dev
-```
 
-### 3. Configurar Frontend
-```bash
-cd frontend
+# Instalar dependencias del frontend
+cd ../frontend
 npm install
-npm start
 ```
 
-## ⚙️ Configuración
-
-### Variables de Entorno (backend/.env)
-```env
-# OpenAI
-OPENAI_API_KEY=tu_clave_de_openai
-OPENAI_MODEL=gpt-4.1-mini
-
-# Servidor
+### **Configuración**
+1. **Crear archivo de configuración**:
+```bash
+# En backend/config.env
+OPENAI_API_KEY=tu_clave_aqui
 PORT=8080
-NODE_ENV=development
-
-# Clínica
-CLINIC_NAME=Tu Clínica Estética
-CLINIC_ADDRESS=Dirección de la clínica
+CLINIC_NAME=Tu Clínica
+CLINIC_ADDRESS=Tu Dirección
 CLINIC_PHONE=+34 123 456 789
 CLINIC_EMAIL=info@tuclinica.com
+
+# Google Calendar (opcional)
+GOOGLE_CALENDAR_CREDENTIALS_PATH=path/to/credentials.json
+GOOGLE_CALENDAR_CALENDAR_ID=tu_calendario_id
 ```
 
-## 📊 Logging
-
-### Comandos de Monitoreo
+2. **Inicializar base de datos**:
 ```bash
-# Ver últimos logs
-node logs.js
-
-# Monitorear API en tiempo real
-node logs.js watch api
-
-# Monitorear OpenAI en tiempo real
-node logs.js watch openai
-
-# Ver estadísticas
-node logs.js stats
+cd backend
+node src/server.js
+# La base de datos se crea automáticamente
 ```
 
-### Archivos de Log
-- `logs/api.log` - Requests/responses de la API
-- `logs/openai.log` - Interacciones con OpenAI
-- `logs/error.log` - Errores del sistema
-- `logs/combined.log` - Todos los logs
+## 🎮 Uso del Sistema
 
-## 🔧 Scripts Disponibles
-
-### Backend
+### **Inicio Rápido**
 ```bash
-npm run dev          # Desarrollo con nodemon
-npm start           # Producción
-npm test           # Tests
-```
+# Opción 1: Scripts de batch (Windows)
+start-project-smart.bat
 
-### Frontend
-```bash
-npm start          # Desarrollo
-npm run build      # Build de producción
-npm test          # Tests
-```
-
-## 🌐 API Endpoints
-
-### Chat
-- `POST /api/chat/message` - Enviar mensaje
-- `POST /api/chat/conversation` - Crear conversación
-- `GET /api/chat/conversation/:id` - Obtener conversación
-
-### Servicios
-- `GET /api/services` - Listar servicios
-- `GET /api/services/:id` - Obtener servicio
-
-### Citas
-- `POST /api/booking/create` - Crear cita
-- `PUT /api/booking/:id` - Actualizar cita
-- `DELETE /api/booking/:id` - Cancelar cita
-
-## 🤖 Intents Soportados
-
-- `saludo` - Saludos y bienvenida
-- `info_servicios` - Información de servicios
-- `agendar_cita` - Agendar cita
-- `reagendar_cita` - Reagendar cita
-- `cancelar_cita` - Cancelar cita
-- `ubicacion_horarios` - Ubicación y horarios
-- `cuidados` - Cuidados pre/post tratamiento
-- `queja` - Quejas y reclamaciones
-- `hablar_humano` - Solicitar atención humana
-
-## 📈 Métricas y Monitoreo
-
-### Métricas de OpenAI
-- Tokens consumidos
-- Tiempo de respuesta
-- Tasa de fallback
-- Confianza de intents
-
-### Métricas de API
-- Requests por minuto
-- Tiempo de respuesta promedio
-- Códigos de estado
-- Errores
-
-## 🔒 Seguridad
-
-- Rate limiting (100 requests/15min)
-- Headers de seguridad (Helmet)
-- Validación de entrada (Joi)
-- Sanitización de datos
-- Logs de auditoría
-
-## 🚀 Despliegue
-
-### Desarrollo
-```bash
-# Backend
-cd backend && npm run dev
-
-# Frontend
+# Opción 2: Comandos NPM
+cd backend && npm run start-smart
 cd frontend && npm start
 ```
 
-### Producción
-```bash
-# Backend
-cd backend && npm start
+### **APIs Disponibles**
 
-# Frontend
-cd frontend && npm run build
+#### **Chat con IA**
+```bash
+POST /api/chat/message
+{
+  "message": "Quiero agendar una cita de hidratación facial",
+  "sessionId": "unique-session-id"
+}
 ```
 
-## 🤝 Contribuir
+#### **Búsqueda de Horarios**
+```bash
+POST /api/calendar/slots/search
+{
+  "servicioId": "hidratación facial profunda",
+  "ventanaCliente": {
+    "desde": "2025-09-09",
+    "hasta": "2025-09-15",
+    "franjas": ["mañana"]
+  }
+}
+```
 
-1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
+#### **Reservar Cita**
+```bash
+POST /api/calendar/slots/reserve
+{
+  "slotId": "slot-uuid",
+  "cliente": {
+    "nombre": "María García",
+    "telefono": "+34 123 456 789",
+    "email": "maria@email.com"
+  },
+  "servicioId": "hidratación facial profunda"
+}
+```
+
+## 🏗️ Arquitectura del Sistema
+
+### **Backend (Node.js + Express)**
+```
+src/
+├── routes/           # Endpoints de API
+├── services/         # Lógica de negocio
+├── data/            # Base de datos SQLite
+└── server.js        # Servidor principal
+```
+
+### **Frontend (React)**
+```
+src/
+├── components/       # Componentes React
+├── services/         # Servicios de API
+└── App.js           # Aplicación principal
+```
+
+### **Servicios Principales**
+- **`calendarService`**: Gestión de calendario y slots
+- **`openaiService`**: Integración con OpenAI
+- **`databaseService`**: Gestión de SQLite
+- **`slotManager`**: Reservas temporales
+- **`dataTransformService`**: Transformación de datos
+
+## 🔧 Funcionalidades Avanzadas
+
+### **Sistema de Calendario**
+- **Búsqueda inteligente** de horarios
+- **Reservas temporales** con expiración
+- **Gestión de recursos** (salas, equipos)
+- **Optimización de carga** de profesionales
+
+### **Gestión de Datos**
+- **Migración automática** desde JSON
+- **Transformación de formatos** para compatibilidad
+- **Backup y recuperación** automática
+- **Validación de datos** con Joi
+
+### **Sistema de Logging**
+- **Winston** para logging estructurado
+- **Archivos separados** por servicio
+- **Rotación automática** de logs
+- **Niveles de log** configurables
+
+## 🛡️ Seguridad y Validación
+
+- **Helmet** para headers de seguridad
+- **CORS** configurado
+- **Rate limiting** para APIs
+- **Validación Joi** para datos de entrada
+- **Sanitización** de inputs
+
+## 📊 Monitoreo y Logs
+
+### **Archivos de Log**
+- `logs/api.log` - Requests de API
+- `logs/error.log` - Errores del sistema
+- `logs/calendar.log` - Actividad de calendario
+- `logs/openai.log` - Interacciones con OpenAI
+
+### **Métricas Disponibles**
+- Tasa de conversión a citas
+- Tiempo de respuesta de APIs
+- Uso de recursos del sistema
+- Estadísticas de ventas
+
+## 🚨 Solución de Problemas
+
+### **Conflictos de Puertos**
+```bash
+# Limpiar procesos
+cleanup.bat
+
+# O manualmente
+taskkill /f /im node.exe
+```
+
+### **Problemas de Base de Datos**
+```bash
+# Recrear base de datos
+rm backend/src/data/clinica.db
+node backend/src/server.js
+```
+
+### **Errores de OpenAI**
+- Verificar `OPENAI_API_KEY` en `config.env`
+- Comprobar límites de API
+- Revisar logs en `logs/openai.log`
+
+## 🔮 Próximas Funcionalidades
+
+- [ ] **Integración WhatsApp Business API**
+- [ ] **Integración Instagram/Facebook Messenger**
+- [ ] **Sistema de voz (IVR/Voicebot)**
+- [ ] **Automatización de emails**
+- [ ] **Sistema de reseñas automáticas**
+- [ ] **Dashboard de métricas**
+- [ ] **Integración CRM**
 
 ## 📝 Licencia
 
-Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) para detalles.
+MIT License - Ver archivo `LICENSE` para más detalles.
+
+## 🤝 Contribuciones
+
+Las contribuciones son bienvenidas. Por favor:
+1. Fork el proyecto
+2. Crea una rama para tu feature
+3. Commit tus cambios
+4. Push a la rama
+5. Abre un Pull Request
 
 ## 📞 Soporte
 
-Para soporte técnico, contacta a:
-- Email: soporte@tuclinica.com
-- Teléfono: +34 123 456 789
-
-## 🙏 Agradecimientos
-
-- OpenAI por proporcionar la API de GPT
-- La comunidad de Node.js y React
-- Todos los contribuidores del proyecto
+Para soporte técnico o preguntas:
+- **Email**: info@tuclinica.com
+- **GitHub Issues**: [Crear issue](https://github.com/josewalke/chatbotOpenAI/issues)
 
 ---
 
-**Desarrollado con ❤️ para clínicas estéticas**
+**Desarrollado con ❤️ para automatizar y mejorar la experiencia de los clientes en clínicas estéticas.**
