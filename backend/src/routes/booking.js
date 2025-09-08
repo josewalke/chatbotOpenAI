@@ -142,6 +142,31 @@ router.post('/create', async (req, res) => {
   }
 });
 
+// GET /api/booking - Obtener todas las citas
+router.get('/', (req, res) => {
+  try {
+    const allBookings = Array.from(bookings.values());
+    
+    res.json({
+      success: true,
+      total: allBookings.length,
+      bookings: allBookings.map(booking => ({
+        id: booking.id,
+        serviceId: booking.serviceId,
+        professionalId: booking.professionalId,
+        customerInfo: booking.customerInfo,
+        date: booking.date,
+        time: booking.time,
+        status: booking.status,
+        createdAt: booking.createdAt
+      }))
+    });
+  } catch (error) {
+    console.error('Error obteniendo citas:', error);
+    res.status(500).json({ error: 'Error al obtener las citas' });
+  }
+});
+
 // GET /api/booking/:id - Obtener cita específica
 router.get('/:id', (req, res) => {
   const booking = bookings.get(req.params.id);
