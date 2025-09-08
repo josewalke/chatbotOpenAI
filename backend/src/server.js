@@ -6,7 +6,7 @@ const dotenv = require('dotenv');
 const path = require('path');
 
 // Cargar variables de entorno
-dotenv.config({ path: '.env' });
+dotenv.config({ path: 'config.env' });
 
 const app = express();
 const PORT = process.env.PORT || 8080;

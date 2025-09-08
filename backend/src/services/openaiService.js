@@ -2,7 +2,7 @@ const OpenAI = require('openai');
 const dotenv = require('dotenv');
 const winston = require('winston');
 
-dotenv.config({ path: '.env' });
+dotenv.config({ path: 'config.env' });
 
 // Logger específico para OpenAI
 const openaiLogger = winston.createLogger({
@@ -28,7 +28,7 @@ if (process.env.NODE_ENV !== 'production') {
   }));
 }
 
-dotenv.config({ path: '.env' });
+dotenv.config({ path: 'config.env' });
 
 class OpenAIService {
   constructor() {
