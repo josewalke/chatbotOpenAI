@@ -12,7 +12,9 @@ yarn.lock
 .env.development.local
 .env.test.local
 .env.production.local
+# Allow config example but ignore actual config
 config.env
+!config.env.example
 
 # Logs
 logs/
@@ -154,9 +156,17 @@ test-*.js
 crear-ventas-prueba.js
 migrate-to-sqlite.js
 
-# Batch files for Windows
-*.bat
+# Batch files for Windows (except important scripts)
 *.ps1
+# Allow important batch scripts
+!start-*.bat
+!limpiar-sistema.bat
+!reiniciar-sistema.bat
+!kill-all-processes.bat
+!git-push*.bat
+!push.bat
+!check-git.bat
+!git-push-complete.bat
 
 # System startup scripts
 start-*.js

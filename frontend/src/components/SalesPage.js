@@ -508,9 +508,9 @@ const SalesPage = () => {
       };
 
       if (editingSale) {
-        await axios.put(`/api/sales/${editingSale.id}`, saleData);
+        await api.put(`/sales/${editingSale.id}`, saleData);
       } else {
-        await axios.post('/api/sales', saleData);
+        await api.post('/sales', saleData);
       }
 
       setShowModal(false);
