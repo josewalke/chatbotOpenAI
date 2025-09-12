@@ -6,6 +6,7 @@ import ServicesList from './components/ServicesList';
 import BookingsPage from './components/BookingsPage';
 import ProductsPage from './components/ProductsPage';
 import SalesPage from './components/SalesPage';
+import SystemStatus from './components/SystemStatus';
 import { FiMessageCircle, FiGrid, FiHome, FiInfo, FiCalendar, FiPackage, FiTrendingUp } from 'react-icons/fi';
 
 const AppContainer = styled.div`
@@ -284,6 +285,7 @@ const App = () => {
         </Header>
         
         <MainContent>
+          <SystemStatus />
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/services" element={<ServicesList />} />

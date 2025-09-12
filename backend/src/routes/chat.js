@@ -21,6 +21,42 @@ const newConversationSchema = Joi.object({
   }).optional()
 });
 
+// GET /api/chat/status - Obtener estado del sistema
+router.get('/status', async (req, res) => {
+  try {
+    const status = openaiService.getSystemStatus();
+    res.json({
+      success: true,
+      status: status,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error obteniendo estado del sistema:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener estado del sistema'
+    });
+  }
+});
+
+// GET /api/chat/hybrid-stats - Obtener estadísticas del sistema híbrido
+router.get('/hybrid-stats', async (req, res) => {
+  try {
+    const stats = openaiService.getHybridStats();
+    res.json({
+      success: true,
+      stats: stats,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error obteniendo estadísticas híbridas:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener estadísticas del sistema híbrido'
+    });
+  }
+});
+
 // POST /api/chat/conversation - Crear nueva conversación
 router.post('/conversation', async (req, res) => {
   try {
@@ -102,6 +138,7 @@ router.post('/message', async (req, res) => {
       intent: aiResponse.intent,
       entities: aiResponse.entities,
       confidence: aiResponse.confidence,
+      relatedProducts: aiResponse.relatedProducts || [],
       conversation: {
         id: conversation.id,
         sessionId: conversation.sessionId,

@@ -6,6 +6,8 @@ const bookingService = require('./bookingService');
 const calendarService = require('./calendarService');
 const slotManager = require('./slotManager');
 const googleCalendarService = require('./googleCalendarService');
+const HybridClassifier = require('./hybridClassifier');
+const AdvancedToolCalling = require('./advancedToolCalling');
 
 dotenv.config({ path: 'config.env' });
 
@@ -41,6 +43,14 @@ class OpenAIService {
     this.model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
     this.fallbackModel = 'gpt-4o'; // Modelo de mayor calidad para casos críticos
     this.confidenceThreshold = 0.7; // Umbral para usar fallback
+    this.isOpenAIAvailable = true; // Flag para controlar disponibilidad
+    this.lastErrorTime = null; // Para implementar retry con backoff
+    
+    // Inicializar servicios híbridos
+    this.hybridClassifier = new HybridClassifier();
+    this.toolCalling = new AdvancedToolCalling();
+    
+    openaiLogger.info('Servicios híbridos inicializados correctamente');
   }
 
   // Prompt del sistema para el asistente de la clínica
@@ -89,6 +99,84 @@ HORARIOS:
 UBICACIÓN: ${process.env.CLINIC_ADDRESS}
 TELÉFONO: ${process.env.CLINIC_PHONE}
 EMAIL: ${process.env.CLINIC_EMAIL}`;
+  }
+
+  // Verificar si OpenAI está disponible (no en cuota excedida)
+  isOpenAIQuotaExceeded(error) {
+    return error && (
+      error.code === 'insufficient_quota' || 
+      error.status === 429 ||
+      error.message?.includes('quota') ||
+      error.message?.includes('billing')
+    );
+  }
+
+  // Sistema de respaldo cuando OpenAI no está disponible
+  generateFallbackResponse(message) {
+    const lowerMessage = message.toLowerCase();
+    
+    // Respuestas predefinidas para casos comunes
+    if (lowerMessage.includes('servicio') || lowerMessage.includes('tratamiento')) {
+      const relatedProducts = this.getRelatedProducts(message);
+      let content = `Te puedo ayudar con información sobre nuestros servicios. Ofrecemos tratamientos faciales, corporales, depilación y productos para el cuidado en casa. ¿Te interesa algún tratamiento específico?`;
+      
+      // Simplificar respuesta si hay productos relacionados
+      if (relatedProducts && relatedProducts.length > 0) {
+        content = "Te muestro nuestros tratamientos disponibles. Puedes ver toda la información detallada en las tarjetas de abajo.";
+      }
+      
+      return {
+        content: content,
+        model: 'fallback',
+        tokensUsed: 0,
+        functionCalled: null,
+        relatedProducts: relatedProducts
+      };
+    }
+    
+    if (lowerMessage.includes('precio') || lowerMessage.includes('costo') || lowerMessage.includes('cuánto')) {
+      return {
+        content: `Para conocer los precios específicos de nuestros tratamientos y productos, te recomiendo contactarnos directamente al ${process.env.CLINIC_PHONE} o visitarnos en ${process.env.CLINIC_ADDRESS}.`,
+        model: 'fallback',
+        tokensUsed: 0,
+        functionCalled: null
+      };
+    }
+    
+    if (lowerMessage.includes('cita') || lowerMessage.includes('agendar') || lowerMessage.includes('reservar')) {
+      return {
+        content: `Para agendar una cita, puedes llamarnos al ${process.env.CLINIC_PHONE} o visitarnos en ${process.env.CLINIC_ADDRESS}. Nuestros horarios son: Lunes a Viernes 9:00-20:00, Sábados 9:00-18:00.`,
+        model: 'fallback',
+        tokensUsed: 0,
+        functionCalled: null
+      };
+    }
+    
+    if (lowerMessage.includes('horario') || lowerMessage.includes('hora')) {
+      return {
+        content: `Nuestros horarios de atención son: Lunes a Viernes de 9:00 a 20:00, Sábados de 9:00 a 18:00. Los domingos permanecemos cerrados.`,
+        model: 'fallback',
+        tokensUsed: 0,
+        functionCalled: null
+      };
+    }
+    
+    if (lowerMessage.includes('ubicación') || lowerMessage.includes('dirección') || lowerMessage.includes('dónde')) {
+      return {
+        content: `Nos encontramos en ${process.env.CLINIC_ADDRESS}. Puedes contactarnos al ${process.env.CLINIC_PHONE} o escribirnos a ${process.env.CLINIC_EMAIL}.`,
+        model: 'fallback',
+        tokensUsed: 0,
+        functionCalled: null
+      };
+    }
+    
+    // Respuesta genérica
+    return {
+      content: `Gracias por contactar con ${process.env.CLINIC_NAME}. En este momento nuestro sistema de IA está temporalmente no disponible, pero puedes contactarnos directamente al ${process.env.CLINIC_PHONE} o visitarnos en ${process.env.CLINIC_ADDRESS}. Estaremos encantados de ayudarte.`,
+      model: 'fallback',
+      tokensUsed: 0,
+      functionCalled: null
+    };
   }
 
   // Obtener información de productos para el prompt
@@ -324,6 +412,32 @@ EMAIL: ${process.env.CLINIC_EMAIL}`;
 
   async processMessage(userMessage, conversationHistory = []) {
     try {
+      // Intentar reconectar si OpenAI no está disponible
+      if (!this.isOpenAIAvailable) {
+        const reconnected = await this.retryOpenAIConnection();
+        if (!reconnected) {
+          openaiLogger.warn('Using fallback system - OpenAI unavailable', {
+            message: userMessage,
+            timestamp: new Date().toISOString()
+          });
+          return this.generateFallbackResponse(userMessage);
+        }
+      }
+
+      // 1. Usar clasificador híbrido primero
+      const hybridResult = await this.hybridClassifier.classifyMessage(userMessage);
+      openaiLogger.info('Hybrid Classification', {
+        intent: hybridResult.intent,
+        method: hybridResult.method,
+        confidence: hybridResult.confidence,
+        timestamp: new Date().toISOString()
+      });
+
+      // 2. Si la confianza es alta, usar resultado híbrido
+      if (hybridResult.confidence > this.confidenceThreshold) {
+        return await this.processWithHybridResult(userMessage, hybridResult, conversationHistory);
+      }
+
       const analysis = await this.analyzeIntent(userMessage);
       
       openaiLogger.info('Processing Message', {
@@ -349,7 +463,7 @@ EMAIL: ${process.env.CLINIC_EMAIL}`;
       // Intentar con el modelo principal usando function calling
       let response;
       try {
-        response = await this.generateResponseWithFunctions(fullPrompt, this.model);
+        response = await this.generateResponseWithAdvancedTools(fullPrompt, this.model);
         openaiLogger.info('Response Generated', {
         model: this.model,
           tokensUsed: response.tokensUsed,
@@ -364,7 +478,7 @@ EMAIL: ${process.env.CLINIC_EMAIL}`;
         });
         
         // Fallback al modelo secundario
-        response = await this.generateResponseWithFunctions(fullPrompt, this.fallbackModel);
+        response = await this.generateResponseWithAdvancedTools(fullPrompt, this.fallbackModel);
         openaiLogger.info('Fallback Response Generated', {
           model: this.fallbackModel,
           tokensUsed: response.tokensUsed,
@@ -386,15 +500,51 @@ EMAIL: ${process.env.CLINIC_EMAIL}`;
         }
       }
 
-      return {
-        response: response.content,
+      // Determinar si incluir productos relacionados
+      let relatedProducts = [];
+      const shouldIncludeProducts = this.shouldIncludeProducts(userMessage, analysis.intent);
+      
+      if (shouldIncludeProducts) {
+        relatedProducts = this.getRelatedProducts(userMessage);
+        openaiLogger.info('Products included in response', {
+          shouldInclude: shouldIncludeProducts,
+          productsCount: relatedProducts.length,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Generar respuesta simplificada si hay productos relacionados
+      let finalResponseContent = response.content;
+      if (relatedProducts && relatedProducts.length > 0) {
+        const simplifiedResponse = this.generateSimplifiedResponse(userMessage, analysis.intent, relatedProducts);
+        if (simplifiedResponse) {
+          finalResponseContent = simplifiedResponse;
+          openaiLogger.info('Response simplified for products', {
+            originalLength: response.content.length,
+            simplifiedLength: simplifiedResponse.length,
+            timestamp: new Date().toISOString()
+          });
+        }
+      }
+
+      const finalResponse = {
+        response: finalResponseContent,
         intent: analysis.intent,
         entities: analysis.entities,
         confidence: analysis.confidence,
         model: response.model,
         tokensUsed: response.tokensUsed,
-        functionExecuted: response.functionCalled ? response.functionCalled.name : null
+        functionExecuted: response.functionCalled ? response.functionCalled.name : null,
+        relatedProducts: relatedProducts
       };
+
+      openaiLogger.info('Final response prepared', {
+        hasRelatedProducts: finalResponse.relatedProducts.length > 0,
+        productsCount: finalResponse.relatedProducts.length,
+        timestamp: new Date().toISOString()
+      });
+
+      return finalResponse;
 
     } catch (error) {
       console.error('Error procesando mensaje:', error);
@@ -404,8 +554,176 @@ EMAIL: ${process.env.CLINIC_EMAIL}`;
         timestamp: new Date().toISOString()
       });
 
+      // Si es error de cuota, activar sistema de respaldo
+      if (this.isOpenAIQuotaExceeded(error)) {
+        this.isOpenAIAvailable = false;
+        this.lastErrorTime = new Date();
+        
+        openaiLogger.warn('OpenAI quota exceeded - activating fallback system', {
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Usar sistema de respaldo
+        const fallbackResponse = this.generateFallbackResponse(userMessage);
+        return {
+          response: fallbackResponse.content,
+          intent: 'fallback',
+          entities: {},
+          confidence: 0.5,
+          model: 'fallback',
+          tokensUsed: 0,
+          functionExecuted: null,
+          relatedProducts: fallbackResponse.relatedProducts || []
+        };
+      }
+
       throw new Error('Error al procesar el mensaje con IA');
     }
+  }
+
+  // Determinar si debe incluir productos relacionados
+  shouldIncludeProducts(message, intent) {
+    const lowerMessage = message.toLowerCase();
+    
+    // Palabras clave que indican interés en productos
+    const productKeywords = [
+      'producto', 'productos', 'tratamiento', 'tratamientos', 'servicio', 'servicios',
+      'facial', 'corporal', 'depilación', 'casa', 'comprar', 'precio', 'costos',
+      'hidratación', 'peeling', 'masaje', 'limpieza', 'rejuvenecimiento', 'ver',
+      'ofrecen', 'tienen', 'disponible', 'información'
+    ];
+    
+    // Intents que requieren mostrar productos
+    const productIntents = [
+      'info_servicios', 'info_productos', 'consulta_precios', 'buscar_producto'
+    ];
+    
+    // Verificar si el mensaje contiene palabras clave de productos
+    const hasProductKeywords = productKeywords.some(keyword => 
+      lowerMessage.includes(keyword)
+    );
+    
+    // Verificar si el intent requiere productos
+    const hasProductIntent = productIntents.includes(intent);
+    
+    // Para debug
+    openaiLogger.info('Product inclusion check', {
+      message: lowerMessage,
+      intent: intent,
+      hasProductKeywords: hasProductKeywords,
+      hasProductIntent: hasProductIntent,
+      shouldInclude: hasProductKeywords || hasProductIntent,
+      timestamp: new Date().toISOString()
+    });
+    
+    return hasProductKeywords || hasProductIntent;
+  }
+
+  // Obtener productos relacionados con una consulta
+  getRelatedProducts(query) {
+    try {
+      const allProducts = productosService.getAllProductos();
+      const lowerQuery = query.toLowerCase();
+      
+      // Log para debug
+      openaiLogger.info('Getting related products', {
+        query: lowerQuery,
+        totalProducts: allProducts.data.length,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Si la consulta es general sobre productos, devolver productos para casa
+      if (lowerQuery.includes('producto') || lowerQuery.includes('productos') || 
+          lowerQuery.includes('enseñame') || lowerQuery.includes('muestra') ||
+          lowerQuery.includes('tienes') || lowerQuery.includes('disponible')) {
+        const casaProducts = allProducts.data.filter(p => p.categoria === 'Productos para Casa');
+        openaiLogger.info('Returning casa products', {
+          count: casaProducts.length,
+          timestamp: new Date().toISOString()
+        });
+        return casaProducts.slice(0, 6);
+      }
+      
+      // Filtrar productos que coincidan con la consulta
+      const relatedProducts = allProducts.data.filter(product => {
+        const searchText = `${product.nombre} ${product.descripcion} ${product.categoria}`.toLowerCase();
+        return searchText.includes(lowerQuery) || 
+               lowerQuery.includes(product.nombre.toLowerCase()) ||
+               lowerQuery.includes(product.categoria.toLowerCase());
+      });
+
+      // Si no hay coincidencias específicas, devolver productos de la categoría más relevante
+      if (relatedProducts.length === 0) {
+        if (lowerQuery.includes('facial') || lowerQuery.includes('piel')) {
+          return allProducts.data.filter(p => p.categoria === 'Tratamientos Faciales');
+        } else if (lowerQuery.includes('corporal') || lowerQuery.includes('cuerpo')) {
+          return allProducts.data.filter(p => p.categoria === 'Tratamientos Corporales');
+        } else if (lowerQuery.includes('depilación') || lowerQuery.includes('vello')) {
+          return allProducts.data.filter(p => p.categoria === 'Depilación');
+        }
+      }
+
+      const result = relatedProducts.slice(0, 6);
+      openaiLogger.info('Returning filtered products', {
+        count: result.length,
+        timestamp: new Date().toISOString()
+      });
+      return result;
+    } catch (error) {
+      openaiLogger.error('Error getting related products', {
+        error: error.message,
+        query: query,
+        timestamp: new Date().toISOString()
+      });
+      return [];
+    }
+  }
+
+  // Obtener estado del sistema
+  getSystemStatus() {
+    return {
+      isOpenAIAvailable: this.isOpenAIAvailable,
+      lastErrorTime: this.lastErrorTime,
+      model: this.model,
+      fallbackModel: this.fallbackModel,
+      timeSinceLastError: this.lastErrorTime ? new Date() - this.lastErrorTime : null
+    };
+  }
+
+  // Método para reintentar conexión con OpenAI
+  async retryOpenAIConnection() {
+    if (!this.isOpenAIAvailable && this.lastErrorTime) {
+      const timeSinceError = new Date() - this.lastErrorTime;
+      const retryInterval = 5 * 60 * 1000; // 5 minutos
+      
+      if (timeSinceError > retryInterval) {
+        try {
+          // Intentar una llamada simple para verificar si OpenAI está disponible
+          await this.openai.chat.completions.create({
+            model: 'gpt-3.5-turbo',
+            messages: [{ role: 'user', content: 'test' }],
+            max_tokens: 1
+          });
+          
+          this.isOpenAIAvailable = true;
+          this.lastErrorTime = null;
+          
+          openaiLogger.info('OpenAI connection restored', {
+            timestamp: new Date().toISOString()
+          });
+          
+          return true;
+        } catch (error) {
+          openaiLogger.warn('OpenAI retry failed', {
+            error: error.message,
+            timestamp: new Date().toISOString()
+          });
+          this.lastErrorTime = new Date(); // Actualizar tiempo del último error
+        }
+      }
+    }
+    return false;
   }
 
   // Generar respuesta con function calling
@@ -450,6 +768,40 @@ EMAIL: ${process.env.CLINIC_EMAIL}`;
       });
       throw error;
     }
+  }
+
+  // Generar respuesta simplificada cuando hay productos relacionados
+  generateSimplifiedResponse(userMessage, intent, relatedProducts) {
+    const lowerMessage = userMessage.toLowerCase();
+    
+    // Respuestas específicas para cuando se muestran productos
+    if (lowerMessage.includes('producto') || lowerMessage.includes('productos') || 
+        lowerMessage.includes('enseñame') || lowerMessage.includes('muestra') ||
+        lowerMessage.includes('tienes') || lowerMessage.includes('disponible')) {
+      
+      if (relatedProducts && relatedProducts.length > 0) {
+        return "Aquí tienes nuestros productos disponibles. Puedes ver los detalles de cada uno y hacer tu compra directamente desde las tarjetas de abajo.";
+      }
+    }
+    
+    if (lowerMessage.includes('tratamiento') || lowerMessage.includes('tratamientos')) {
+      if (relatedProducts && relatedProducts.length > 0) {
+        return "Te muestro nuestros tratamientos disponibles. Puedes ver toda la información detallada en las tarjetas de abajo.";
+      }
+    }
+    
+    if (lowerMessage.includes('precio') || lowerMessage.includes('costos') || lowerMessage.includes('cuánto')) {
+      if (relatedProducts && relatedProducts.length > 0) {
+        return "Aquí puedes ver todos los precios de nuestros productos y servicios en las tarjetas de abajo.";
+      }
+    }
+    
+    // Respuesta genérica cuando hay productos
+    if (relatedProducts && relatedProducts.length > 0) {
+      return "Te muestro las opciones disponibles. Puedes ver todos los detalles en las tarjetas de abajo.";
+    }
+    
+    return null; // No simplificar si no hay productos
   }
 
   // Ejecutar función llamada por la IA
@@ -1137,6 +1489,196 @@ Responde ÚNICAMENTE en formato JSON válido, sin markdown ni código:
     };
     
     return profesionales[nombre] || null;
+  }
+
+  // Procesar mensaje con resultado del clasificador híbrido
+  async processWithHybridResult(message, hybridResult, conversationHistory = []) {
+    try {
+      const { intent, entities, confidence } = hybridResult;
+      
+      // Generar respuesta basada en el intent detectado
+      let response = '';
+      
+      switch (intent) {
+        case 'greeting':
+          response = '¡Hola! Soy el asistente virtual de la clínica. ¿En qué puedo ayudarte hoy?';
+          break;
+        case 'services':
+          response = 'Ofrecemos una amplia gama de servicios estéticos. ¿Te interesa algún tratamiento específico?';
+          break;
+        case 'booking':
+          response = 'Perfecto, puedo ayudarte a agendar una cita. ¿Qué servicio te interesa?';
+          break;
+        case 'prices':
+          response = 'Los precios varían según el tratamiento. ¿Hay algún servicio específico del que te gustaría conocer el precio?';
+          break;
+        case 'location':
+          response = 'Estamos ubicados en [dirección]. ¿Te gustaría que te envíe la ubicación exacta?';
+          break;
+        case 'hours':
+          response = 'Nuestros horarios son de lunes a viernes de 9:00 a 20:00 y sábados de 9:00 a 15:00.';
+          break;
+        case 'products':
+          response = 'Tenemos productos de alta calidad disponibles para uso en casa. Te muestro las opciones:';
+          break;
+        case 'satisfaction':
+          response = 'Valoramos mucho tu opinión. ¿Podrías contarme más sobre tu experiencia?';
+          break;
+        case 'human':
+          response = 'Entiendo que prefieres hablar con una persona. Te voy a conectar con nuestro equipo.';
+          break;
+        default:
+          response = 'Entiendo tu consulta. ¿Podrías ser más específico para poder ayudarte mejor?';
+      }
+
+      // Determinar si incluir productos
+      const shouldInclude = this.shouldIncludeProducts(message, intent);
+      const relatedProducts = shouldInclude ? this.getRelatedProducts(message) : [];
+
+      return {
+        response: response,
+        intent: intent,
+        entities: entities,
+        confidence: confidence,
+        relatedProducts: relatedProducts,
+        method: 'hybrid'
+      };
+
+    } catch (error) {
+      openaiLogger.error('Error procesando resultado híbrido:', error);
+      return this.generateFallbackResponse(message);
+    }
+  }
+
+  // Generar respuesta con tool-calling avanzado
+  async generateResponseWithAdvancedTools(prompt, model) {
+    try {
+      const tools = this.toolCalling.getTools();
+      
+      const completion = await this.openai.chat.completions.create({
+        model: model,
+        messages: [{ role: 'user', content: prompt }],
+        tools: tools,
+        tool_choice: "auto",
+        max_tokens: 500,
+        temperature: 0.7
+      });
+
+      const message = completion.choices[0].message;
+      
+      return {
+        content: message.content || 'No se pudo generar una respuesta.',
+        tokensUsed: completion.usage?.total_tokens || 0,
+        toolCalled: message.tool_calls ? message.tool_calls[0] : null,
+        functionCalled: message.tool_calls ? message.tool_calls[0].function.name : null
+      };
+
+    } catch (error) {
+      openaiLogger.error('Error generando respuesta con herramientas avanzadas:', error);
+      throw error;
+    }
+  }
+
+  // Manejar llamadas a herramientas avanzadas
+  async handleAdvancedToolCalls(toolCalls, message, conversationHistory = []) {
+    try {
+      const results = [];
+      
+      for (const toolCall of toolCalls) {
+        const { name, arguments: args } = toolCall.function;
+        const parameters = JSON.parse(args);
+        
+        openaiLogger.info('Ejecutando herramienta avanzada', {
+          function: name,
+          parameters: parameters,
+          timestamp: new Date().toISOString()
+        });
+
+        const result = await this.toolCalling.executeFunction(name, parameters);
+        results.push(result);
+      }
+
+      // Generar respuesta basada en los resultados
+      let responseContent = this.generateResponseFromToolResults(results);
+      
+      // Determinar si incluir productos
+      const shouldInclude = this.shouldIncludeProducts(message, 'products');
+      const relatedProducts = shouldInclude ? this.getRelatedProducts(message) : [];
+
+      return {
+        response: responseContent,
+        intent: 'tool_execution',
+        entities: [],
+        confidence: 0.9,
+        relatedProducts: relatedProducts,
+        toolResults: results
+      };
+
+    } catch (error) {
+      openaiLogger.error('Error manejando herramientas avanzadas:', error);
+      return this.generateFallbackResponse(message);
+    }
+  }
+
+  // Generar respuesta basada en resultados de herramientas
+  generateResponseFromToolResults(results) {
+    let response = '';
+    
+    results.forEach(result => {
+      if (result.function === 'buscar_huecos') {
+        if (result.result.success && result.result.candidatos.length > 0) {
+          response += 'He encontrado los siguientes horarios disponibles:\n\n';
+          result.result.candidatos.forEach((slot, index) => {
+            response += `${index + 1}. ${slot.inicio} - ${slot.profesional} (${slot.sala})\n`;
+          });
+          response += '\n¿Cuál prefieres?';
+        } else {
+          response += 'No hay horarios disponibles en la ventana solicitada. ¿Te gustaría probar con otra fecha?';
+        }
+      } else if (result.function === 'reservar_cita') {
+        if (result.result.success) {
+          response += `✅ Cita reservada exitosamente!\nID de cita: ${result.result.cita_id}`;
+        } else {
+          response += `❌ No se pudo reservar la cita: ${result.result.error}`;
+        }
+      } else if (result.function === 'obtener_servicios') {
+        if (result.result.success) {
+          response += 'Estos son nuestros servicios disponibles:\n\n';
+          result.result.servicios.forEach(service => {
+            response += `• ${service.nombre} (${service.duracion} min)`;
+            if (service.precio) response += ` - €${service.precio}`;
+            response += '\n';
+          });
+        }
+      } else if (result.function === 'obtener_profesionales') {
+        if (result.result.success) {
+          response += 'Nuestros profesionales:\n\n';
+          result.result.profesionales.forEach(prof => {
+            response += `• ${prof.nombre} - Especialidades: ${prof.especialidades.join(', ')}\n`;
+          });
+        }
+      } else {
+        response += result.result.success ? 
+          `✅ ${result.result.mensaje || 'Operación completada exitosamente'}` :
+          `❌ ${result.result.error || 'Error en la operación'}`;
+      }
+    });
+
+    return response || 'He procesado tu solicitud. ¿Hay algo más en lo que pueda ayudarte?';
+  }
+
+  // Obtener estadísticas del sistema híbrido
+  getHybridStats() {
+    return {
+      hybridClassifier: this.hybridClassifier.getStats(),
+      toolCalling: this.toolCalling.getStats(),
+      openai: {
+        available: this.isOpenAIAvailable,
+        lastError: this.lastErrorTime,
+        model: this.model,
+        fallbackModel: this.fallbackModel
+      }
+    };
   }
 }
 

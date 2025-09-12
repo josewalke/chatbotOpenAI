@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import axios from 'axios';
 import { FiSend, FiUser, FiMessageCircle } from 'react-icons/fi';
+import ProductGrid from './ProductGrid';
 
 const ChatContainer = styled.div`
   display: flex;
@@ -242,7 +243,8 @@ const ChatInterface = () => {
           sender: 'bot',
           timestamp: new Date().toISOString(),
           intent: response.data.intent,
-          entities: response.data.entities
+          entities: response.data.entities,
+          relatedProducts: response.data.relatedProducts || []
         };
 
         setMessages(prev => [...prev, botMessage]);
@@ -276,6 +278,21 @@ const ChatInterface = () => {
     sendMessage(reply);
   };
 
+  const handleProductBuy = (product) => {
+    // Aquí puedes implementar la lógica de compra
+    console.log('Producto seleccionado para compra:', product);
+    
+    // Mostrar confirmación sin enviar mensaje automático
+    const confirmMessage = {
+      id: Date.now(),
+      content: `✅ Producto agregado al carrito: ${product.nombre} (${product.quantity} unidad por €${product.precio * product.quantity})`,
+      sender: 'bot',
+      timestamp: new Date().toISOString()
+    };
+    
+    setMessages(prev => [...prev, confirmMessage]);
+  };
+
   const formatTime = (timestamp) => {
     return new Date(timestamp).toLocaleTimeString('es-ES', {
       hour: '2-digit',
@@ -292,14 +309,24 @@ const ChatInterface = () => {
       
       <MessagesContainer>
         {messages.map((message) => (
-          <MessageBubble key={message.id} $isUser={message.sender === 'user'}>
-            <MessageContent $isUser={message.sender === 'user'}>
-              {message.content}
-              <MessageTime $isUser={message.sender === 'user'}>
-                {formatTime(message.timestamp)}
-              </MessageTime>
-            </MessageContent>
-          </MessageBubble>
+          <div key={message.id}>
+            <MessageBubble $isUser={message.sender === 'user'}>
+              <MessageContent $isUser={message.sender === 'user'}>
+                {message.content}
+                <MessageTime $isUser={message.sender === 'user'}>
+                  {formatTime(message.timestamp)}
+                </MessageTime>
+              </MessageContent>
+            </MessageBubble>
+            
+            {/* Mostrar productos relacionados si existen */}
+            {message.sender === 'bot' && message.relatedProducts && message.relatedProducts.length > 0 && (
+              <ProductGrid 
+                products={message.relatedProducts} 
+                onBuy={handleProductBuy}
+              />
+            )}
+          </div>
         ))}
         
         {isLoading && (
