@@ -3,6 +3,9 @@ import styled from 'styled-components';
 import axios from 'axios';
 import { FiSend, FiUser, FiMessageCircle } from 'react-icons/fi';
 import ProductGrid from './ProductGrid';
+import ServiceGrid from './ServiceGrid';
+import BookingForm from './BookingForm';
+import './BookingForm.css';
 
 const ChatContainer = styled.div`
   display: flex;
@@ -180,6 +183,8 @@ const ChatInterface = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState(null);
   const [sessionId, setSessionId] = useState(null);
+  const [showBookingForm, setShowBookingForm] = useState(false);
+  const [selectedService, setSelectedService] = useState('');
   const messagesEndRef = useRef(null);
 
   const quickReplies = [
@@ -213,6 +218,21 @@ const ChatInterface = () => {
     } catch (error) {
       console.error('Error creando conversación:', error);
     }
+  };
+
+  const handleBookingFormSubmit = (formMessage) => {
+    setShowBookingForm(false);
+    sendMessage(formMessage);
+  };
+
+  const handleBookingFormCancel = () => {
+    setShowBookingForm(false);
+    setSelectedService('');
+  };
+
+  const handleServiceClick = (serviceName) => {
+    setSelectedService(serviceName);
+    setShowBookingForm(true);
   };
 
   const sendMessage = async (messageText) => {
@@ -278,19 +298,59 @@ const ChatInterface = () => {
     sendMessage(reply);
   };
 
-  const handleProductBuy = (product) => {
-    // Aquí puedes implementar la lógica de compra
+  const handleProductBuy = async (product) => {
     console.log('Producto seleccionado para compra:', product);
     
-    // Mostrar confirmación sin enviar mensaje automático
-    const confirmMessage = {
+    // Enviar mensaje al backend para agregar al carrito
+    const addToCartMessage = `Agrega ${product.nombre} al carrito`;
+    
+    // Crear mensaje del usuario
+    const userMessage = {
       id: Date.now(),
-      content: `✅ Producto agregado al carrito: ${product.nombre} (${product.quantity} unidad por €${product.precio * product.quantity})`,
-      sender: 'bot',
+      content: addToCartMessage,
+      sender: 'user',
       timestamp: new Date().toISOString()
     };
     
-    setMessages(prev => [...prev, confirmMessage]);
+    setMessages(prev => [...prev, userMessage]);
+    setIsLoading(true);
+    
+    try {
+      const response = await axios.post('/api/chat/message', {
+        message: addToCartMessage,
+        conversationId: conversationId,
+        sessionId: sessionId
+      });
+      
+      if (response.data.success) {
+        const botMessage = {
+          id: Date.now() + 1,
+          content: response.data.response,
+          sender: 'bot',
+          timestamp: new Date().toISOString(),
+          relatedProducts: response.data.relatedProducts || []
+        };
+        
+        setMessages(prev => [...prev, botMessage]);
+      }
+    } catch (error) {
+      console.error('Error agregando al carrito:', error);
+      const errorMessage = {
+        id: Date.now() + 1,
+        content: 'Error agregando el producto al carrito. Por favor, intenta de nuevo.',
+        sender: 'bot',
+        timestamp: new Date().toISOString()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleServiceBook = async (service) => {
+    console.log('Servicio seleccionado para agendar:', service);
+    setSelectedService(service.nombre);
+    setShowBookingForm(true);
   };
 
   const formatTime = (timestamp) => {
@@ -321,10 +381,23 @@ const ChatInterface = () => {
             
             {/* Mostrar productos relacionados si existen */}
             {message.sender === 'bot' && message.relatedProducts && message.relatedProducts.length > 0 && (
-              <ProductGrid 
-                products={message.relatedProducts} 
-                onBuy={handleProductBuy}
-              />
+              <>
+                {/* Mostrar servicios si hay servicios */}
+                {message.relatedProducts.some(item => item.tipo === 'servicio') && (
+                  <ServiceGrid 
+                    services={message.relatedProducts.filter(item => item.tipo === 'servicio')} 
+                    onBook={handleServiceBook}
+                  />
+                )}
+                
+                {/* Mostrar productos si hay productos */}
+                {message.relatedProducts.some(item => !item.tipo || item.tipo === 'producto') && (
+                  <ProductGrid 
+                    products={message.relatedProducts.filter(item => !item.tipo || item.tipo === 'producto')} 
+                    onBuy={handleProductBuy}
+                  />
+                )}
+              </>
             )}
           </div>
         ))}
@@ -342,6 +415,16 @@ const ChatInterface = () => {
         
         <div ref={messagesEndRef} />
       </MessagesContainer>
+
+      {showBookingForm && (
+        <div style={{ padding: '0 20px' }}>
+          <BookingForm
+            serviceName={selectedService}
+            onFormSubmit={handleBookingFormSubmit}
+            onCancel={handleBookingFormCancel}
+          />
+        </div>
+      )}
 
       <InputContainer>
         <form onSubmit={handleSendMessage} style={{ display: 'flex', width: '100%', gap: '12px' }}>

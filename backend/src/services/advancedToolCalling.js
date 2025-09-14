@@ -143,6 +143,153 @@ class AdvancedToolCalling {
       {
         type: "function",
         function: {
+          name: "obtener_servicios_interactivos",
+          description: "Obtener lista de servicios disponibles con formato interactivo",
+          parameters: {
+            type: "object",
+            properties: {
+              categoria: {
+                type: "string",
+                description: "Categoría de servicios (opcional)"
+              },
+              incluir_precios: {
+                type: "boolean",
+                description: "Si incluir precios en la respuesta",
+                default: true
+              }
+            }
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "agregar_al_carrito",
+          description: "Agregar un producto al carrito de compras",
+          parameters: {
+            type: "object",
+            properties: {
+              producto_id: {
+                type: "string",
+                description: "ID único del producto basado en su nombre (ej: 'crema_antienvejecimiento' para 'Crema Antienvejecimiento')"
+              },
+              producto_nombre: {
+                type: "string",
+                description: "Nombre del producto"
+              },
+              precio: {
+                type: "number",
+                description: "Precio del producto"
+              },
+              cantidad: {
+                type: "integer",
+                description: "Cantidad a agregar (por defecto 1)",
+                default: 1
+              },
+              session_id: {
+                type: "string",
+                description: "ID de la sesión del usuario"
+              }
+            },
+            required: ["producto_id", "producto_nombre", "precio", "session_id"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "consultar_carrito",
+          description: "Consultar el estado actual del carrito de compras",
+          parameters: {
+            type: "object",
+            properties: {
+              session_id: {
+                type: "string",
+                description: "ID de la sesión del usuario"
+              }
+            },
+            required: ["session_id"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "remover_del_carrito",
+          description: "Remover un producto del carrito de compras",
+          parameters: {
+            type: "object",
+            properties: {
+              producto_id: {
+                type: "string",
+                description: "ID del producto a remover"
+              },
+              cantidad: {
+                type: "integer",
+                description: "Cantidad a remover (opcional, si no se especifica se remueve todo)"
+              },
+              session_id: {
+                type: "string",
+                description: "ID de la sesión del usuario"
+              }
+            },
+            required: ["producto_id", "session_id"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "agendar_cita",
+          description: "Agendar una cita para un servicio específico",
+          parameters: {
+            type: "object",
+            properties: {
+              servicio_id: {
+                type: "string",
+                description: "ID del servicio a agendar"
+              },
+              servicio_nombre: {
+                type: "string",
+                description: "Nombre del servicio"
+              },
+              fecha_preferida: {
+                type: "string",
+                description: "Fecha preferida para la cita (opcional)"
+              },
+              hora_preferida: {
+                type: "string",
+                description: "Hora preferida para la cita (opcional)"
+              },
+              session_id: {
+                type: "string",
+                description: "ID de la sesión del usuario"
+              }
+            },
+            required: ["servicio_id", "servicio_nombre", "session_id"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
+          name: "limpiar_carrito",
+          description: "Limpiar completamente el carrito de compras",
+          parameters: {
+            type: "object",
+            properties: {
+              session_id: {
+                type: "string",
+                description: "ID de la sesión del usuario"
+              }
+            },
+            required: ["session_id"]
+          }
+        }
+      },
+      {
+        type: "function",
+        function: {
           name: "obtener_profesionales",
           description: "Obtener lista de profesionales disponibles",
           parameters: {
@@ -371,23 +518,39 @@ class AdvancedToolCalling {
       try {
         const { categoria, incluir_precios } = params;
         
-        // Simular obtención de servicios
-        const servicios = [
-          {
-            id: "srv_001",
-            nombre: "Limpieza Facial",
-            duracion: 60,
-            precio: incluir_precios ? 45 : null,
-            categoria: "Facial"
-          },
-          {
-            id: "srv_002", 
-            nombre: "Botox",
-            duracion: 30,
-            precio: incluir_precios ? 200 : null,
-            categoria: "Estética"
-          }
-        ];
+        // Usar datos reales de la base de datos
+        const productosService = require('./productosService');
+        const categorias = productosService.getCategorias();
+        
+        let servicios = [];
+        
+        if (categoria) {
+          // Filtrar por categoría específica
+          const productos = productosService.getProductosByCategoria(categoria);
+          servicios = productos.data.map(producto => ({
+            id: producto.id.toString(),
+            nombre: producto.nombre,
+            duracion: producto.duracion,
+            precio: incluir_precios ? producto.precio : null,
+            categoria: producto.categoria,
+            descripcion: producto.descripcion
+          }));
+        } else {
+          // Obtener todos los servicios
+          categorias.data.forEach(cat => {
+            const productos = productosService.getProductosByCategoria(cat);
+            productos.data.forEach(producto => {
+              servicios.push({
+                id: producto.id.toString(),
+                nombre: producto.nombre,
+                duracion: producto.duracion,
+                precio: incluir_precios ? producto.precio : null,
+                categoria: producto.categoria,
+                descripcion: producto.descripcion
+              });
+            });
+          });
+        }
 
         return {
           success: true,
@@ -520,6 +683,206 @@ class AdvancedToolCalling {
           success: true,
           cliente: cliente
         };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.message
+        };
+      }
+    });
+
+    // Función para obtener servicios interactivos
+    this.functionRegistry.set('obtener_servicios_interactivos', async (params) => {
+      try {
+        const { categoria, incluir_precios = true } = params;
+        
+        // Usar datos reales de la base de datos
+        const productosService = require('./productosService');
+        const categorias = productosService.getCategorias();
+        
+        let servicios = [];
+        
+        if (categoria) {
+          // Filtrar por categoría específica
+          const productos = productosService.getProductosByCategoria(categoria);
+          servicios = productos.data.map(producto => ({
+            id: producto.id.toString(),
+            nombre: producto.nombre,
+            duracion: producto.duracion,
+            precio: incluir_precios ? producto.precio : null,
+            categoria: producto.categoria,
+            descripcion: producto.descripcion,
+            tipo: 'servicio'
+          }));
+        } else {
+          // Obtener todos los servicios (excluir productos para casa)
+          categorias.data.forEach(cat => {
+            if (cat !== 'Productos para Casa') { // Excluir productos para casa
+              const productos = productosService.getProductosByCategoria(cat);
+              productos.data.forEach(producto => {
+                servicios.push({
+                  id: producto.id.toString(),
+                  nombre: producto.nombre,
+                  duracion: producto.duracion,
+                  precio: incluir_precios ? producto.precio : null,
+                  categoria: producto.categoria,
+                  descripcion: producto.descripcion,
+                  tipo: 'servicio'
+                });
+              });
+            }
+          });
+        }
+
+        // Generar respuesta para servicios interactivos
+        let responseText = '¡Perfecto! Te muestro nuestros servicios disponibles. Puedes hacer clic en "Agendar Cita" para reservar el que más te interese:\n\n';
+        
+        const categoriasAgrupadas = {};
+        servicios.forEach(servicio => {
+          if (!categoriasAgrupadas[servicio.categoria]) {
+            categoriasAgrupadas[servicio.categoria] = [];
+          }
+          categoriasAgrupadas[servicio.categoria].push(servicio);
+        });
+
+        Object.keys(categoriasAgrupadas).forEach(categoria => {
+          responseText += `**${categoria}:**\n`;
+          categoriasAgrupadas[categoria].forEach(servicio => {
+            responseText += `• ${servicio.nombre}`;
+            if (servicio.precio) {
+              responseText += ` - ${servicio.precio}€`;
+            }
+            if (servicio.duracion) {
+              responseText += ` (${servicio.duracion})`;
+            }
+            responseText += '\n';
+          });
+          responseText += '\n';
+        });
+
+        return {
+          success: true,
+          message: responseText,
+          servicios: servicios,
+          total: servicios.length,
+          formato: 'interactivo'
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.message
+        };
+      }
+    });
+
+    // Funciones del carrito de compras
+    this.functionRegistry.set('agregar_al_carrito', async (params) => {
+      try {
+        const { producto_id, producto_nombre, precio, cantidad = 1, session_id } = params;
+        
+        // Generar ID consistente basado en el nombre del producto
+        const consistentProductId = producto_nombre.toLowerCase()
+          .replace(/[áàäâ]/g, 'a')
+          .replace(/[éèëê]/g, 'e')
+          .replace(/[íìïî]/g, 'i')
+          .replace(/[óòöô]/g, 'o')
+          .replace(/[úùüû]/g, 'u')
+          .replace(/ñ/g, 'n')
+          .replace(/[^a-z0-9]/g, '_')
+          .replace(/_+/g, '_')
+          .replace(/^_|_$/g, '');
+        
+        const cartService = require('./cartService');
+        const result = cartService.addToCart(session_id, consistentProductId, producto_nombre, precio, cantidad);
+        
+        return result;
+      } catch (error) {
+        return {
+          success: false,
+          error: error.message
+        };
+      }
+    });
+
+    this.functionRegistry.set('consultar_carrito', async (params) => {
+      try {
+        const { session_id } = params;
+        
+        const cartService = require('./cartService');
+        const cartDetails = cartService.getCartDetails(session_id);
+        
+        return {
+          success: true,
+          ...cartDetails
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.message
+        };
+      }
+    });
+
+    this.functionRegistry.set('remover_del_carrito', async (params) => {
+      try {
+        const { producto_id, cantidad, session_id } = params;
+        
+        const cartService = require('./cartService');
+        const result = cartService.removeFromCart(session_id, producto_id, cantidad);
+        
+        return result;
+      } catch (error) {
+        return {
+          success: false,
+          error: error.message
+        };
+      }
+    });
+
+    this.functionRegistry.set('agendar_cita', async (params) => {
+      try {
+        const { servicio_id, servicio_nombre, fecha_preferida, hora_preferida, session_id } = params;
+        
+        // Generar ID de cita único
+        const cita_id = `cita_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Simular agendamiento (aquí iría la lógica real de agendamiento)
+        let mensaje = `✅ Cita agendada exitosamente para ${servicio_nombre}`;
+        
+        if (fecha_preferida) {
+          mensaje += `\n📅 Fecha: ${fecha_preferida}`;
+        }
+        if (hora_preferida) {
+          mensaje += `\n🕐 Hora: ${hora_preferida}`;
+        }
+        
+        mensaje += `\n🆔 ID de cita: ${cita_id}`;
+        mensaje += `\n\n¿Te gustaría agendar otra cita o necesitas ayuda con algo más?`;
+        
+        return {
+          success: true,
+          message: mensaje,
+          cita_id: cita_id,
+          servicio: servicio_nombre,
+          fecha: fecha_preferida || 'Por confirmar',
+          hora: hora_preferida || 'Por confirmar'
+        };
+      } catch (error) {
+        return {
+          success: false,
+          error: error.message
+        };
+      }
+    });
+
+    this.functionRegistry.set('limpiar_carrito', async (params) => {
+      try {
+        const { session_id } = params;
+        
+        const cartService = require('./cartService');
+        const result = cartService.clearCart(session_id);
+        
+        return result;
       } catch (error) {
         return {
           success: false,

@@ -119,7 +119,7 @@ router.post('/message', async (req, res) => {
     const history = conversationService.getConversationHistory(conversation.id);
 
     // Procesar mensaje con OpenAI
-    const aiResponse = await openaiService.processMessage(value.message, history);
+    const aiResponse = await openaiService.processMessage(value.message, history, value.sessionId);
 
     // Agregar respuesta del bot
     conversationService.addBotResponse(
